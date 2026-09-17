@@ -10,7 +10,8 @@ const {
   BASE44_API_KEY,
   TELEGRAM_BOT_TOKEN,
   PUBLIC_URL,
-  ALLOWED_TELEGRAM_IDS = ""
+  ALLOWED_TELEGRAM_IDS = "",
+  WHATSAPP_COUNTRY_CODE = "504" // Honduras por defecto
 } = process.env;
 
 for (const [name, value] of Object.entries({
@@ -112,6 +113,48 @@ function escapeHtml(value = "") {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
 }
+
+/* ------------------------------------------------------------------ */
+/*  NUEVO: helpers para generar el enlace de WhatsApp                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Limpia un número de teléfono y le antepone el código de país
+ * si hace falta. Asume números locales de 8 dígitos (Honduras).
+ * Ajusta WHATSAPP_COUNTRY_CODE si tus clientes son de otro país.
+ */
+function toWhatsAppNumber(raw) {
+  if (!raw) return null;
+
+  let digits = String(raw).replace(/\D/g, "");
+  if (!digits) return null;
+
+  // Número local de 8 dígitos -> anteponer código de país
+  if (digits.length === 8) {
+    digits = `${WHATSAPP_COUNTRY_CODE}${digits}`;
+  }
+
+  return digits;
+}
+
+/**
+ * Construye el enlace wa.me con un mensaje pre-cargado.
+ * IMPORTANTE: ajusta "e.telefono" más abajo por el nombre real
+ * del campo de teléfono en tu entidad Encomienda (p. ej.
+ * "telefono_destinatario", "celular", etc.).
+ */
+function buildWhatsAppLink(rawPhone, guia) {
+  const number = toWhatsAppNumber(rawPhone);
+  if (!number) return null;
+
+  const text = encodeURIComponent(
+    `Hola, le escribo sobre su encomienda con guía ${guia}.`
+  );
+
+  return `https://wa.me/${number}?text=${text}`;
+}
+
+/* ------------------------------------------------------------------ */
 
 /**
  * Base44 SDK cambia un poco entre versiones.
@@ -325,10 +368,26 @@ app.post("/telegram", async (req, res) => {
 
     const entregas = await findEntregasByEncomiendaId(encomienda.id);
 
+    /* --------------------------------------------------------------
+     * NUEVO: botón con enlace de WhatsApp hacia el cliente.
+     * Ajusta "encomienda.telefono" al nombre real del campo en tu
+     * entidad Encomienda si es distinto (celular, telefono_cliente...).
+     * ------------------------------------------------------------ */
+    const waLink = buildWhatsAppLink(encomienda.telefono, encomienda.numero_guia);
+
+    const replyMarkup = waLink
+      ? {
+          inline_keyboard: [
+            [{ text: "💬 Escribir/llamar por WhatsApp", url: waLink }]
+          ]
+        }
+      : undefined;
+
     await telegram("sendMessage", {
       chat_id: chatId,
       text: renderEncomienda(encomienda, entregas),
-      parse_mode: "HTML"
+      parse_mode: "HTML",
+      reply_markup: replyMarkup
     });
   } catch (err) {
     console.error("Error procesando Telegram:", err);
