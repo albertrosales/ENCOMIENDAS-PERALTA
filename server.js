@@ -115,13 +115,44 @@ function escapeHtml(value = "") {
 }
 
 /* ------------------------------------------------------------------ */
-/*  NUEVO: helpers para generar el enlace de WhatsApp                 */
+/*  Helpers para teléfono y enlace de WhatsApp                         */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Busca el teléfono dentro del registro de la encomienda.
+ * Prueba nombres comunes y, si no encuentra, cualquier campo que
+ * parezca de teléfono. Si no hay ninguno, deja en los logs la lista
+ * de campos reales para poder ajustar el nombre.
+ */
+function findPhone(e) {
+  const preferred = [
+    "telefono_destinatario",
+    "telefono",
+    "celular",
+    "whatsapp",
+    "telefono_cliente",
+    "phone"
+  ];
+
+  for (const key of preferred) {
+    if (e[key]) return e[key];
+  }
+
+  const key = Object.keys(e).find(
+    k => /tel|cel|whats|phone/i.test(k) && e[k]
+  );
+  if (key) return e[key];
+
+  console.warn(
+    "Sin teléfono. Campos de la encomienda:",
+    Object.keys(e).join(", ")
+  );
+  return null;
+}
 
 /**
  * Limpia un número de teléfono y le antepone el código de país
  * si hace falta. Asume números locales de 8 dígitos (Honduras).
- * Ajusta WHATSAPP_COUNTRY_CODE si tus clientes son de otro país.
  */
 function toWhatsAppNumber(raw) {
   if (!raw) return null;
@@ -139,9 +170,6 @@ function toWhatsAppNumber(raw) {
 
 /**
  * Construye el enlace wa.me con un mensaje pre-cargado.
- * IMPORTANTE: ajusta "e.telefono" más abajo por el nombre real
- * del campo de teléfono en tu entidad Encomienda (p. ej.
- * "telefono_destinatario", "celular", etc.).
  */
 function buildWhatsAppLink(rawPhone, guia) {
   const number = toWhatsAppNumber(rawPhone);
@@ -237,12 +265,13 @@ async function findEntregasByEncomiendaId(encomiendaId) {
     );
 }
 
-function renderEncomienda(e, entregas = []) {
+function renderEncomienda(e, entregas = [], phone = null) {
   const lines = [
     "📦 <b>ENCOMIENDA</b>",
     "",
     `🔖 <b>Guía:</b> ${escapeHtml(e.numero_guia)}`,
     `👤 <b>Destinatario:</b> ${escapeHtml(e.destinatario)}`,
+    `📱 <b>Teléfono:</b> ${escapeHtml(phone || "Sin dato")}`,
     `📍 <b>Destino:</b> ${escapeHtml(e.destino)}`,
     `📦 <b>Tipo:</b> ${escapeHtml(e.tipo_paquete)}`,
     `⚖️ <b>Peso:</b> ${escapeHtml(e.peso)}${e.peso !== undefined ? " lb" : ""}`,
@@ -368,24 +397,21 @@ app.post("/telegram", async (req, res) => {
 
     const entregas = await findEntregasByEncomiendaId(encomienda.id);
 
-    /* --------------------------------------------------------------
-     * NUEVO: botón con enlace de WhatsApp hacia el cliente.
-     * Ajusta "encomienda.telefono" al nombre real del campo en tu
-     * entidad Encomienda si es distinto (celular, telefono_cliente...).
-     * ------------------------------------------------------------ */
-    const waLink = buildWhatsAppLink(encomienda.telefono, encomienda.numero_guia);
+    // Teléfono del cliente y botón de WhatsApp
+    const phone = findPhone(encomienda);
+    const waLink = buildWhatsAppLink(phone, encomienda.numero_guia);
 
     const replyMarkup = waLink
       ? {
           inline_keyboard: [
-            [{ text: "💬 Escribir/llamar por WhatsApp", url: waLink }]
+            [{ text: "💬 Escribir por WhatsApp", url: waLink }]
           ]
         }
       : undefined;
 
     await telegram("sendMessage", {
       chat_id: chatId,
-      text: renderEncomienda(encomienda, entregas),
+      text: renderEncomienda(encomienda, entregas, phone),
       parse_mode: "HTML",
       reply_markup: replyMarkup
     });
