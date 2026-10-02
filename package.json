@@ -1,17 +1,15 @@
 {
-  "name": "encomiendas-telegram-render",
+  "name": "encomiendas-peralta",
   "version": "1.0.0",
-  "description": "Bot de Telegram para consultar encomiendas de Base44 desde Render",
+  "private": true,
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
   "dependencies": {
-    "@base44/sdk": "^0.8.0",
-    "express": "^4.21.2"
+    "@base44/sdk": "^0.8.52",
+    "express": "^4.21.2",
+    "tesseract.js": "^5.1.1"
   }
 }
